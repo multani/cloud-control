@@ -1,0 +1,18 @@
+[project]
+name = "cloud-take-42"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "aiobotocore>=2.24.2",
+    "boto3>=1.40.18",
+    "click>=8.2.1",
+    "httpx>=0.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "ruff>=0.12.12",
+    "types-aiobotocore>=2.24.2",
+]
