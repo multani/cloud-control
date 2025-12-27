@@ -1,5 +1,5 @@
 [project]
-name = "cloud-take-42"
+name = "cloud-control"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
@@ -8,6 +8,8 @@ dependencies = [
     "boto3>=1.40.18",
     "click>=8.2.1",
     "httpx>=0.28.1",
+    "requests>=2.32.5",
+    "structlog>=25.5.0",
 ]
 
 [dependency-groups]
@@ -16,3 +18,10 @@ dev = [
     "ruff>=0.12.12",
     "types-aiobotocore>=2.24.2",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+cloud-control= "cloud_control.cli:main"
