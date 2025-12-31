@@ -1,0 +1,15 @@
+{
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+
+  "automerge": true,
+
+  "packageRules": [
+    {
+      // Pytest dependencies sometimes are bound to each other.
+      // They can all be automerged if tests are passing.
+      "matchPackageNames": ["pytest{/,}**"],
+      "groupName": "pytest",
+      "automerge": true,
+    },
+  ],
+}
