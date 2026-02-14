@@ -2,6 +2,7 @@ import time
 
 import boto3
 
+from ._base import BaseProvider
 from types_boto3_ec2.client import EC2Client
 import requests
 import structlog
@@ -51,7 +52,7 @@ def get_region() -> str:
         return region
 
 
-class EC2:
+class AWS(BaseProvider):
     def __init__(self) -> None:
         self.config = get_aws_config()
         self.ec2: EC2Client = boto3.client("ec2", config=self.config)

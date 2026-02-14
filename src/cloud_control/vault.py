@@ -1,6 +1,5 @@
 import logging
 import logging.handlers
-import random
 import subprocess
 import sys
 import time
@@ -21,8 +20,13 @@ else:
 from .config import Config
 from .http import raise_http_error
 from .providers.aws import get_aws_config
+from .utils import random_delay
 
 logger = structlog.get_logger(module="vault")
+
+
+class RaftNodeNotFound(Exception):
+    pass
 
 
 def is_vault_initialized(vault_addr: str, vault_token: str | None = None) -> bool:
@@ -38,10 +42,6 @@ def is_vault_initialized(vault_addr: str, vault_token: str | None = None) -> boo
     return is_initialized
 
 
-def random_delay(maximum: int = 30) -> float:
-    return random.random() * maximum
-
-
 def find_raft_node(vault_addr: str, headers: dict[str, str], address: str) -> str:
     url = urljoin(vault_addr, "/v1/sys/storage/raft/configuration")
     r = requests.get(url, headers=headers)
@@ -54,13 +54,9 @@ def find_raft_node(vault_addr: str, headers: dict[str, str], address: str) -> st
             break
     else:
         logger.debug(f"Couldn't find Vault node name for {address}")
-        raise NotFound(address)
+        raise RaftNodeNotFound(address)
 
     return node_id
-
-
-class NotFound(Exception):
-    pass
 
 
 def init(vault_addr: str, vault_token: str) -> int:
@@ -153,7 +149,7 @@ def stop(vault_addr: str, vault_token: str) -> None:
     logging.debug(f"Finding Raft node associated with {local_address}")
     try:
         node_id = find_raft_node(vault_addr, headers, local_address)
-    except NotFound:
+    except RaftNodeNotFound:
         logger.critical(f"Couldn't find Vault node name for {local_address}")
         sys.exit(1)
 

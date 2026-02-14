@@ -1,0 +1,2 @@
+class CloudControlError(Exception):
+    pass

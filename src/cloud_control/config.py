@@ -26,6 +26,7 @@ class Config:
     disk: DiskConfig
     network: NetworkConfig
     vault: VaultConfig
+    provider: str = "aws"
 
     @classmethod
     def load(cls) -> Self:

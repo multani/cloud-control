@@ -29,7 +29,7 @@ def wait_disk() -> int:
     disk_id = conf.disk.data
     device = "/dev/sdb"  # TODO: fetch from config
 
-    ec2 = aws.EC2()
+    ec2 = aws.AWS()
     ec2.wait_disk_attached(disk_id, device)
     device = disks.find_device_name(disk_id)
     logger.info(f"Found device name: {device}")
@@ -53,7 +53,7 @@ def network_interface_cmds() -> None:
 def wait_interface() -> int:
     conf = Config.load()
 
-    ec2 = aws.EC2()
+    ec2 = aws.AWS()
     ec2.wait_eni(conf.network.eni, conf.network.ip)
 
     return 0
