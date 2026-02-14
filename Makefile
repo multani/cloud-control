@@ -1,4 +1,7 @@
-all: fmt
+all: check
+
+
+check: fmt typing test
 
 .PHONY: fmt
 fmt:
@@ -9,6 +12,6 @@ fmt:
 test:
 	uv run pytest
 
-.PHONY: mypy
-mypy:
-	uv run mypy
+.PHONY: typing
+typing:
+	uv run ty check

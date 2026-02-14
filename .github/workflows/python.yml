@@ -22,8 +22,8 @@ jobs:
       - name: Build
         run: uv sync --all-extras --dev
 
-      - name: mypy
-        run: make mypy
+      - name: typing
+        run: make typing
 
       - name: Test
         run: make test

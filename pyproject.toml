@@ -10,12 +10,12 @@ dependencies = [
     "httpx>=0.28.1",
     "requests>=2.32.5",
     "structlog>=25.5.0",
+    "ty>=0.0.17",
     "types-boto3-ec2>=1.42.15",
 ]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.17.1",
     "pytest>=9.0.2",
     "ruff>=0.12.12",
     "types-aiobotocore>=2.24.2",
@@ -30,7 +30,3 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 cloud-control= "cloud_control.cli:main"
-
-[tool.mypy]
-files = ["src/cloud_control/"]
-strict = true
