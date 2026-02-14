@@ -5,13 +5,18 @@ import subprocess
 import sys
 import time
 import uuid
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin
 
 import boto3
 import requests
 import structlog
 from requests.exceptions import HTTPError
-from types_boto3_secretsmanager.client import SecretsManagerClient
+
+if TYPE_CHECKING:
+    from types_boto3_secretsmanager.client import SecretsManagerClient
+else:
+    SecretsManagerClient = object
 
 from .config import Config
 from .http import raise_http_error
