@@ -34,3 +34,26 @@ def wait_ip_address(ip: str) -> bool:
 
     logger.info("Unable to find IP address, giving up")
     return False
+
+
+# def find_local_ip_address() -> str:
+#     logging.debug("Finding local IP address...")
+#     default_route = json.loads(
+#         subprocess.check_output(["ip", "--json", "route", "get", "8.8.8.8"])
+#     )
+#     iface = default_route[0]["dev"]
+
+#     ipaddrs = json.loads(subprocess.check_output(["ip", "--json", "address"]))
+#     for ipaddr in ipaddrs:
+#         if ipaddr["ifname"] == iface:
+#             for addr in ipaddr["addr_info"]:
+#                 if addr["family"] == "inet":
+#                     LOCAL_ADDRESS = addr["local"]
+#                     break
+#             else:
+#                 logger.critical(f"Couldn't find inet address of {iface}")
+#                 sys.exit(1)
+#             break
+#     else:
+#         logger.critical(f"Couldn't find local address of {iface}")
+#         sys.exit(1)

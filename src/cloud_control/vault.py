@@ -1,4 +1,3 @@
-import json
 import logging
 import logging.handlers
 import random
@@ -6,16 +5,17 @@ import subprocess
 import sys
 import time
 import uuid
-from pathlib import Path
 from urllib.parse import urljoin
 
 import boto3
 import requests
 import structlog
 from requests.exceptions import HTTPError
+from types_boto3_secretsmanager.client import SecretsManagerClient
 
 from .config import Config
 from .http import raise_http_error
+from .providers.aws import get_aws_config
 
 logger = structlog.get_logger(module="vault")
 
@@ -63,14 +63,11 @@ def init(vault_addr: str, vault_token: str) -> int:
         "x-vault-token": vault_token,
     }
 
-    config = Config.load(Path("/etc/conf.json"))
+    config = Config.load()
     secret_id = config.vault.root_token_secret_name
 
     init_secret_id = str(uuid.uuid4())
     init_request_token = "abb383ec-f2cd-473e-81d1-67d60a4b6715"
-
-    from .providers.aws import get_aws_config
-    from types_boto3_secretsmanager.client import SecretsManagerClient
 
     sm: SecretsManagerClient = boto3.client("secretsmanager", config=get_aws_config())
 
@@ -144,64 +141,18 @@ def stop(vault_addr: str, vault_token: str) -> None:
         "x-vault-token": vault_token,
     }
 
-    with open("/etc/conf.json") as fp:
-        conf = json.load(fp)
+    conf = Config.load()
+    local_address = conf.network.ip
+    logging.debug(f"Local IP address={local_address}")
 
-    LOCAL_ADDRESS = conf["network"]["ip"]
-
-    # logging.debug("Finding local IP address...")
-    # default_route = json.loads(
-    #     subprocess.check_output(["ip", "--json", "route", "get", "8.8.8.8"])
-    # )
-    # iface = default_route[0]["dev"]
-
-    # ipaddrs = json.loads(subprocess.check_output(["ip", "--json", "address"]))
-    # for ipaddr in ipaddrs:
-    #     if ipaddr["ifname"] == iface:
-    #         for addr in ipaddr["addr_info"]:
-    #             if addr["family"] == "inet":
-    #                 LOCAL_ADDRESS = addr["local"]
-    #                 break
-    #         else:
-    #             logger.critical(f"Couldn't find inet address of {iface}")
-    #             sys.exit(1)
-    #         break
-    # else:
-    #     logger.critical(f"Couldn't find local address of {iface}")
-    #     sys.exit(1)
-
-    logging.debug(f"Found local IP address={LOCAL_ADDRESS}")
-
-    logging.debug(f"Finding Raft node associated with {LOCAL_ADDRESS}")
+    logging.debug(f"Finding Raft node associated with {local_address}")
     try:
-        node_id = find_raft_node(vault_addr, headers, LOCAL_ADDRESS)
+        node_id = find_raft_node(vault_addr, headers, local_address)
     except NotFound:
-        logger.critical(f"Couldn't find Vault node name for {LOCAL_ADDRESS}")
+        logger.critical(f"Couldn't find Vault node name for {local_address}")
         sys.exit(1)
 
-    logging.debug(f"Raft node for {LOCAL_ADDRESS} is: {node_id}")
-
-    # while node_id is not None:
-    #     logger.info(f"Removing node: {node_id}")
-    #     r = requests.post(
-    #         f"{vault_addr}/v1/sys/storage/raft/remove-peer",
-    #         headers=headers,
-    #         json={
-    #             "server_id": node_id,
-    #         },
-    #     )
-    #     raise_http_error(r)
-
-    #     delay = random_delay(10)
-    #     logger.info(f"Checking if node {node_id} is out in {delay}s")
-    #     time.sleep(delay)
-
-    #     try:
-    #         node_id = find_raft_node(vault_addr, headers, LOCAL_ADDRESS)
-    #     except NotFound:
-    #         break
-    #     else:
-    #         continue
+    logging.debug(f"Raft node for {local_address} is: {node_id}")
 
     r = requests.get(f"{vault_addr}/v1/sys/leader", headers=headers)
     raise_http_error(r)
@@ -233,10 +184,3 @@ def stop(vault_addr: str, vault_token: str) -> None:
         time.sleep(delay)
 
     logger.info("Vault stopped")
-
-    # logger.info("Removing Vault data files")
-    # shutil.rmtree("/srv/vault/data/raft")
-    # os.remove("/srv/vault/data/vault.db")
-    # os.remove("/srv/vault/data/node-id")
-
-    # logger.info("Vault and its data have been terminated")

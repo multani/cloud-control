@@ -28,7 +28,12 @@ class Config:
     vault: VaultConfig
 
     @classmethod
-    def load(cls, path: Path) -> Self:
+    def load(cls) -> Self:
+        path = Path("/etc/conf.json")
+        return cls.load_from_file(path)
+
+    @classmethod
+    def load_from_file(cls, path: Path) -> Self:
         data = {}
 
         if path.is_file():

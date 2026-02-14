@@ -1,11 +1,14 @@
-import sys
-from typing import NoReturn
-from dataclasses import dataclass
 import logging
+import logging.handlers
+import sys
+from dataclasses import dataclass
+from typing import NoReturn
+
 import click
-import json
-from . import disks
-from . import vault
+
+from . import disks, vault
+from .config import Config
+from .providers import aws
 
 
 @click.group()
@@ -13,22 +16,21 @@ def cli() -> None:
     pass
 
 
-@cli.command()
+@cli.group(name="disk")
+def disk_cmds() -> None:
+    pass
+
+
+@disk_cmds.command(name="wait")
 def wait_disk() -> int:
     logger = logging.getLogger()
 
-    with open("/etc/conf.json") as fp:
-        conf = json.load(fp)
-
-    disk_id = conf["disk"]["data"]
-    device = "/dev/sdb"
-
-    from .providers import aws
+    conf = Config.load()
+    disk_id = conf.disk.data
+    device = "/dev/sdb"  # TODO: fetch from config
 
     ec2 = aws.EC2()
-
     ec2.wait_disk_attached(disk_id, device)
-
     device = disks.find_device_name(disk_id)
     logger.info(f"Found device name: {device}")
 
@@ -37,19 +39,22 @@ def wait_disk() -> int:
     return 0
 
 
-@cli.command()
-def wait_interface() -> int:
-    with open("/etc/conf.json") as fp:
-        conf = json.load(fp)
+@cli.group(name="network")
+def network_cmds() -> None:
+    pass
 
-    from .providers import aws
+
+@network_cmds.group(name="interface")
+def network_interface_cmds() -> None:
+    pass
+
+
+@network_interface_cmds.command(name="wait")
+def wait_interface() -> int:
+    conf = Config.load()
 
     ec2 = aws.EC2()
-
-    eni_id = conf["network"]["eni"]
-    ip = conf["network"]["ip"]
-
-    ec2.wait_eni(eni_id, ip)
+    ec2.wait_eni(conf.network.eni, conf.network.ip)
 
     return 0
 
