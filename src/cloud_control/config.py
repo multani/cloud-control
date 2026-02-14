@@ -1,7 +1,9 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
-import json
 from typing import Self
+
+from .providers._base import BaseProvider
 
 
 @dataclass
@@ -27,6 +29,14 @@ class Config:
     network: NetworkConfig
     vault: VaultConfig
     provider: str = "aws"
+
+    def get_provider(self) -> BaseProvider:
+        if self.provider == "aws":
+            from .providers.aws import AWS
+
+            return AWS(self)
+        else:
+            raise ValueError(f"Unknown provider {self.provider}")
 
     @classmethod
     def load(cls) -> Self:

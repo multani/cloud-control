@@ -1,14 +1,24 @@
 import time
+import uuid
+from typing import TYPE_CHECKING
 
 import boto3
-
-from ._base import BaseProvider
-from types_boto3_ec2.client import EC2Client
 import requests
 import structlog
 from botocore.config import Config as AWSConfig
 from botocore.exceptions import ClientError
 from cloud_control.http import raise_http_error
+
+from ..config import Config
+from ..exceptions import VaultInitConflict
+from ._base import BaseProvider, BaseVaultInitLock
+
+if TYPE_CHECKING:
+    from types_boto3_ec2.client import EC2Client
+    from types_boto3_secretsmanager.client import SecretsManagerClient
+else:
+    EC2Client = object
+    SecretsManagerClient = object
 
 from .. import network
 
@@ -52,12 +62,43 @@ def get_region() -> str:
         return region
 
 
+class AWSVaultInitLock(BaseVaultInitLock):
+    def __init__(self, sm: SecretsManagerClient, secret_id: str) -> None:
+        self.sm = sm
+        self.secret_id = secret_id
+
+        self.init_secret_value = str(uuid.uuid4())
+
+        # This value must stay the same across all the Vault initializer for
+        # the same Vault cluster.
+        self.init_request_token = "abb383ec-f2cd-473e-81d1-67d60a4b6715"
+
+    def acquire(self) -> None:
+        try:
+            self.sm.put_secret_value(
+                SecretId=self.secret_id,
+                ClientRequestToken=self.init_request_token,
+                SecretString=self.init_secret_value,
+            )
+        except self.sm.exceptions.ResourceExistsException:
+            # This exception should raise on all but the very first client:
+            # If a version with this value already exists and the version of the
+            # SecretString and SecretBinary values are different from those in
+            # the request, then the request fails because you can't modify a
+            # secret version.
+            # You can only create new versions to store new secret values.
+            raise VaultInitConflict()
+
+
 class AWS(BaseProvider):
-    def __init__(self) -> None:
-        self.config = get_aws_config()
-        self.ec2: EC2Client = boto3.client("ec2", config=self.config)
+    def __init__(self, instance_config: Config) -> None:
+        self.config = instance_config
         self.logger = structlog.get_logger(module="aws.ec2")
         self.instance_id = get_instance_id()
+
+        config = get_aws_config()
+        self.ec2: EC2Client = boto3.client("ec2", config=config)
+        self.sm: SecretsManagerClient = boto3.client("secretsmanager", config=config)
 
     def wait_disk_attached(self, disk_id: str, device: str) -> None:
         # aws ec2 attach-volume --instance-id "$INSTANCE_ID" --volume-id "$DISK_ID" --device "$DEVICE"
@@ -72,14 +113,15 @@ class AWS(BaseProvider):
             # First, verify that the disk is not already attached to another instance
             while True:
                 logger.debug(f"Checking status of disk {disk_id}")
-                response_describe_volumes = self.ec2.describe_volumes(
-                    VolumeIds=[disk_id]
-                )
-                volume = response_describe_volumes["Volumes"][0]
+                r_dv = self.ec2.describe_volumes(VolumeIds=[disk_id])
+                volume = r_dv["Volumes"][0]
 
                 attachments = volume["Attachments"]
                 # No attachments, so disk is free
                 if len(attachments) == 0:
+                    logger.debug(
+                        f"Attaching disk {disk_id} to instance {self.instance_id} with device {device}"
+                    )
                     try:
                         response_attach_volume = self.ec2.attach_volume(
                             Device=device,
@@ -134,7 +176,10 @@ class AWS(BaseProvider):
                     logger.info(f"Waiting {duration}s")
                     time.sleep(duration)
 
-    def wait_eni(self, eni_id: str, ip: str) -> int:  # TODO: change return type
+    def wait_network_interface(self) -> None:
+        eni_id = self.config.network.eni
+        ip = self.config.network.ip
+
         device_index = 1
 
         max_tries = 5
@@ -216,6 +261,23 @@ class AWS(BaseProvider):
 
         else:
             logger.info("Unable to attach ENI and find IP address, giving up")
-            return 255
+            raise ValueError("Unable to attach ENI and find IP address")
 
-        return 0
+    def save_root_token(self, root_token: str) -> None:
+        secret_id = self.config.vault.root_token_secret_name
+
+        logger.info(f"Saving root token into Secrets Manager {secret_id!r}")
+        self.sm.put_secret_value(
+            SecretId=secret_id,
+            SecretString=root_token,
+        )
+
+    def get_root_token(self) -> str:
+        secret_id = self.config.vault.root_token_secret_name
+
+        value = self.sm.get_secret_value(SecretId=secret_id)
+        return value["SecretString"]
+
+    def get_vault_initializer(self) -> AWSVaultInitLock:
+        secret_id = self.config.vault.root_token_secret_name
+        return AWSVaultInitLock(self.sm, secret_id)

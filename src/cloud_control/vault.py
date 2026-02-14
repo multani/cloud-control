@@ -3,23 +3,15 @@ import logging.handlers
 import subprocess
 import sys
 import time
-import uuid
-from typing import TYPE_CHECKING
 from urllib.parse import urljoin
 
-import boto3
 import requests
 import structlog
 from requests.exceptions import HTTPError
 
-if TYPE_CHECKING:
-    from types_boto3_secretsmanager.client import SecretsManagerClient
-else:
-    SecretsManagerClient = object
-
 from .config import Config
+from .exceptions import VaultInitConflict
 from .http import raise_http_error
-from .providers.aws import get_aws_config
 from .utils import random_delay
 
 logger = structlog.get_logger(module="vault")
@@ -59,34 +51,25 @@ def find_raft_node(vault_addr: str, headers: dict[str, str], address: str) -> st
     return node_id
 
 
-def init(vault_addr: str, vault_token: str) -> int:
-    headers = {
-        "x-vault-token": vault_token,
-    }
+def init(vault_addr: str) -> int:
+    headers: dict[str, str] = {}
 
     config = Config.load()
-    secret_id = config.vault.root_token_secret_name
+    provider = config.get_provider()
 
-    init_secret_id = str(uuid.uuid4())
-    init_request_token = "abb383ec-f2cd-473e-81d1-67d60a4b6715"
-
-    sm: SecretsManagerClient = boto3.client("secretsmanager", config=get_aws_config())
+    lock = provider.get_vault_initializer()
 
     for i in range(10):
         logger.info("Checking if Vault needs to be initialized...")
-        is_initialized = is_vault_initialized(vault_addr, vault_token)
+        is_initialized = is_vault_initialized(vault_addr)
 
         if is_initialized:
             break
 
+        logger.debug("Trying to get a secret lock")
         try:
-            logger.debug("Trying to get a secret lock")
-            sm.put_secret_value(
-                SecretId=secret_id,
-                ClientRequestToken=init_request_token,
-                SecretString=init_secret_id,
-            )
-        except sm.exceptions.ResourceExistsException:
+            lock.acquire()
+        except VaultInitConflict:
             # This exception should raise on all but the very first client:
             # If a version with this value already exists and the version of the
             # SecretString and SecretBinary values are different from those in
@@ -117,7 +100,7 @@ def init(vault_addr: str, vault_token: str) -> int:
         r = requests.put(f"{vault_addr}/v1/sys/init", headers=headers, json=args)
         raise_http_error(r)
     except HTTPError as exc:
-        if is_vault_initialized(vault_addr, vault_token):
+        if is_vault_initialized(vault_addr):
             logger.info("Vault is already initialized, so we are all good.")
             return 0
         logger.critical(f"Failed to initialize: {exc}")
@@ -127,22 +110,23 @@ def init(vault_addr: str, vault_token: str) -> int:
 
     root_token = data["root_token"]
 
-    logger.info(f"Saving root token into Secrets Manager {secret_id!r}")
-    sm.put_secret_value(
-        SecretId=secret_id,
-        SecretString=root_token,
-    )
+    logger.info("Saving Vault root token")
+    provider.save_root_token(root_token)
 
-    logger.info(f"Vault initialized, the root token is in {secret_id!r}")
+    logger.info("Vault initialized, the root token has been saved!")
     return 0
 
 
-def stop(vault_addr: str, vault_token: str) -> None:
+def stop(vault_addr: str) -> None:
+    conf = Config.load()
+
+    provider = conf.get_provider()
+    vault_token = provider.get_root_token()
+
     headers = {
         "x-vault-token": vault_token,
     }
 
-    conf = Config.load()
     local_address = conf.network.ip
     logging.debug(f"Local IP address={local_address}")
 

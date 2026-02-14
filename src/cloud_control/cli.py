@@ -8,7 +8,6 @@ import click
 
 from . import disks, vault
 from .config import Config
-from .providers import aws
 
 
 @click.group()
@@ -25,12 +24,13 @@ def disk_cmds() -> None:
 def wait_disk() -> int:
     logger = logging.getLogger()
 
-    conf = Config.load()
-    disk_id = conf.disk.data
+    config = Config.load()
+    disk_id = config.disk.data
     device = "/dev/sdb"  # TODO: fetch from config
 
-    ec2 = aws.AWS()
-    ec2.wait_disk_attached(disk_id, device)
+    provider = config.get_provider()
+    provider.wait_disk_attached(disk_id, device)
+
     device = disks.find_device_name(disk_id)
     logger.info(f"Found device name: {device}")
 
@@ -51,10 +51,10 @@ def network_interface_cmds() -> None:
 
 @network_interface_cmds.command(name="wait")
 def wait_interface() -> int:
-    conf = Config.load()
+    config = Config.load()
 
-    ec2 = aws.AWS()
-    ec2.wait_eni(conf.network.eni, conf.network.ip)
+    provider = config.get_provider()
+    provider.wait_network_interface()
 
     return 0
 
@@ -77,7 +77,7 @@ pass_vault_opts = click.make_pass_decorator(VaultOptions, ensure=True)
     envvar="VAULT_ADDR",
     default="http://127.0.0.1:8200",
 )
-@click.option(
+@click.option(  # TODO: unused
     "-t",
     "--vault-token",
     help="Vault token",
@@ -93,14 +93,14 @@ def vault_cmds(ctx: click.Context, vault_addr: str, vault_token: str) -> None:
 @vault_cmds.command(name="init")
 @pass_vault_opts
 def vault_init(opts: VaultOptions) -> int:
-    vault.init(opts.vault_addr, opts.vault_token)
+    vault.init(opts.vault_addr)
     return 0
 
 
 @vault_cmds.command(name="stop")
 @pass_vault_opts
 def vault_stop(opts: VaultOptions) -> int:
-    vault.stop(opts.vault_addr, opts.vault_token)
+    vault.stop(opts.vault_addr)
     return 0
 
 
