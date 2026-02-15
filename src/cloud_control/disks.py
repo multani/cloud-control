@@ -1,8 +1,10 @@
-import structlog
 import os
 import subprocess
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+
+import structlog
 
 logger = structlog.get_logger()
 
@@ -38,27 +40,6 @@ def find_device_name(disk_id: str) -> str:
 
         logger.info(f"Device {disk_id} not found, waiting 2s and trying again")
         time.sleep(2)
-
-
-def try_mount(partition: str, mount_point: str, tries: int = 0) -> None:
-    max_tries = 5
-
-    logger = structlog.get_logger(attempt=f"{tries + 1}/{max_tries}")
-    logger.info(f"Mount {partition} to {mount_point}")
-
-    try:
-        subprocess.check_output(["mount", partition, mount_point])
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode == 32:
-            if tries > max_tries:
-                logger.info("Tried too many times, giving up")
-                raise exc from None
-            create_partition(partition)
-            try_mount(partition, mount_point, tries + 1)
-        else:
-            raise
-
-    logger.info(f"{partition} mounted to {mount_point}")
 
 
 def create_partition(partition: str) -> str:
@@ -100,3 +81,70 @@ def create_partition(partition: str) -> str:
     subprocess.check_output(["mkfs.ext4", partition])
 
     return partition
+
+
+def mount_data_disk(device: str) -> None:
+    def mkdir(path: Path, mode: int = 0o700) -> Path:
+        path.mkdir(exist_ok=True, mode=mode, parents=True)
+        return path
+
+    mnt_data = Path("/mnt/data")
+    mkdir(mnt_data)
+
+    # TODO: mkdir /mnt/data
+    mnt_data_unit = Mount(f"{device}p1", mnt_data.as_posix()).mount()
+
+    private_dir = mkdir(mnt_data / "private")
+    Mount(
+        private_dir.as_posix(),
+        "/var/lib/private",
+        options=["bind"],
+        requires=[mnt_data_unit],
+    ).mount()
+
+    srv_dir = mkdir(mnt_data / "srv", mode=0o755)  # need more permissions
+    Mount(
+        srv_dir.as_posix(),
+        "/srv",
+        options=["bind"],
+        requires=[mnt_data_unit],
+    ).mount()
+
+
+@dataclass
+class Mount:
+    what: str
+    where: str
+    options: list[str] = field(default_factory=list)
+    requires: list[str] = field(default_factory=list)
+
+    @property
+    def unit_name(self) -> str:
+        name = self.where.lstrip("/").replace("/", "-")
+        return f"{name}.mount"
+
+    def save(self) -> str:
+        content = [
+            "[Unit]",
+            "Before=local-fs.target",
+        ]
+
+        for require in self.requires:
+            content.append(f"Requires={require}")
+
+        content.append("[Mount]")
+        content.append(f"What={self.what}")
+        content.append(f"Where={self.where}")
+        content.append(f"Options={','.join(self.options)}")
+
+        target_path = Path("/etc/systemd/system") / self.unit_name
+        target_path.write_text("\n".join(content))
+        return self.unit_name
+
+    def mount(self) -> str:
+        logger.info(f"Mounting {self.what} to {self.where}")
+        unit_name = self.save()
+        subprocess.check_output(["systemctl", "daemon-reload"])
+        subprocess.check_output(["systemctl", "start", unit_name])
+        logger.info(f"{self.what} mounted to {self.where}")
+        return unit_name

@@ -1,3 +1,4 @@
+from pathlib import Path
 import logging
 import logging.handlers
 import sys
@@ -34,7 +35,12 @@ def wait_disk() -> int:
     device = disks.find_device_name(disk_id)
     logger.info(f"Found device name: {device}")
 
-    disks.try_mount(f"{device}p1", "/srv")
+    partition = Path(f"{device}p1")
+    if not partition.is_block_device():
+        logger.info(f"Partition {partition} not found, creating")
+        disks.create_partition(partition.as_posix())
+
+    disks.mount_data_disk(device)
 
     return 0
 
