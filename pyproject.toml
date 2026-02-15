@@ -9,6 +9,7 @@ dependencies = [
     "click>=8.2.1",
     "httpx>=0.28.1",
     "requests>=2.32.5",
+    "stamina>=25.2.0",
     "structlog>=25.5.0",
     "ty>=0.0.17",
     "types-boto3-ec2>=1.42.15",

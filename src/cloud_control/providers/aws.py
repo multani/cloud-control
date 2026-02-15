@@ -1,13 +1,16 @@
 import time
 import uuid
+from functools import cache
 from typing import TYPE_CHECKING
 
 import boto3
 import requests
+import stamina
 import structlog
 from botocore.config import Config as AWSConfig
 from botocore.exceptions import ClientError
 from cloud_control.http import raise_http_error
+from requests.exceptions import RequestException
 
 from ..config import Config
 from ..exceptions import VaultInitConflict
@@ -31,6 +34,8 @@ def get_aws_config() -> AWSConfig:
     return config
 
 
+@cache
+@stamina.retry(on=RequestException)
 def get_metadata_token() -> str:
     headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
     token_url = "http://169.254.169.254/latest/api/token"
@@ -39,6 +44,8 @@ def get_metadata_token() -> str:
         return response.text
 
 
+@cache
+@stamina.retry(on=RequestException)
 def get_instance_id() -> str:
     token = get_metadata_token()
     headers = {"X-aws-ec2-metadata-token": token}
@@ -50,6 +57,8 @@ def get_instance_id() -> str:
         return instance_id
 
 
+@cache
+@stamina.retry(on=RequestException)
 def get_region() -> str:
     token = get_metadata_token()
     headers = {"X-aws-ec2-metadata-token": token}
