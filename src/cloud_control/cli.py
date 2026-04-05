@@ -31,6 +31,8 @@ def wait_disk() -> int:
 
     provider = config.get_provider()
     provider.wait_disk_attached(disk_id, device)
+    # lsblk --json --output path,serial,id,id-link
+    # serial == digitalocean_volume.this.name
 
     device = disks.find_device_name(disk_id)
     logger.info(f"Found device name: {device}")
